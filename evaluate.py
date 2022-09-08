@@ -164,6 +164,8 @@ if __name__ == '__main__':
                         help='seed used for initialization')
     parser.add_argument('--master_address', type=str, default='127.0.0.1',
                         help='address for master')
+    parser.add_argument('--master_port', type=str, default='6020',
+                        help='port for master')
 
     args = parser.parse_args()
     utils.create_exp_dir(args.save)

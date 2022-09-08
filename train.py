@@ -10,6 +10,7 @@ import torch
 import torch.nn as nn
 import numpy as np
 import os
+from tqdm import tqdm
 
 import torch.distributed as dist
 from torch.multiprocessing import Process
@@ -66,6 +67,7 @@ def main(args):
 
     # if load
     checkpoint_file = os.path.join(args.save, 'checkpoint.pt')
+    print('model will be saved into {}'.format(checkpoint_file))
     if args.cont_training:
         logging.info('loading the model.')
         checkpoint = torch.load(checkpoint_file, map_location='cpu')
@@ -121,6 +123,8 @@ def main(args):
             writer.add_scalar('val/bpd_elbo', valid_nelbo * bpd_coeff, epoch)
 
         save_freq = int(np.ceil(args.epochs / 100))
+        print('save_freq = {}'.format(save_freq))
+        
         if epoch % save_freq == 0 or epoch == (args.epochs - 1):
             if args.global_rank == 0:
                 logging.info('saving the model.')
@@ -128,6 +132,7 @@ def main(args):
                             'optimizer': cnn_optimizer.state_dict(), 'global_step': global_step,
                             'args': args, 'arch_instance': arch_instance, 'scheduler': cnn_scheduler.state_dict(),
                             'grad_scalar': grad_scalar.state_dict()}, checkpoint_file)
+                print('model saved!')
 
     # Final validation
     valid_neg_log_p, valid_nelbo = test(valid_queue, model, num_samples=1000, args=args, logging=logging)
@@ -145,7 +150,7 @@ def train(train_queue, model, cnn_optimizer, grad_scalar, global_step, warmup_it
                                       groups_per_scale=model.groups_per_scale, fun='square')
     nelbo = utils.AvgrageMeter()
     model.train()
-    for step, x in enumerate(train_queue):
+    for step, x in enumerate(tqdm(train_queue)):
         x = x[0] if len(x) > 1 else x
         x = x.cuda()
 
@@ -318,7 +323,7 @@ def test_vae_fid(model, args, total_fid_samples):
 def init_processes(rank, size, fn, args):
     """ Initialize the distributed environment. """
     os.environ['MASTER_ADDR'] = args.master_address
-    os.environ['MASTER_PORT'] = '6020'
+    os.environ['MASTER_PORT'] = args.master_port  # '6020'
     torch.cuda.set_device(args.local_rank)
     dist.init_process_group(backend='nccl', init_method='env://', rank=rank, world_size=size)
     fn(args)
@@ -431,6 +436,8 @@ if __name__ == '__main__':
                         help='number of gpus')
     parser.add_argument('--master_address', type=str, default='127.0.0.1',
                         help='address for master')
+    parser.add_argument('--master_port', type=str, default='6020',
+                        help='port for master')
     parser.add_argument('--seed', type=int, default=1,
                         help='seed used for initialization')
     args = parser.parse_args()
